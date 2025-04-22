@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Графічне представлення графів</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+      }
+
+      canvas {
+        border: 1px solid black;
+        background: #fff;
+        display: inline-block;
+        margin: 20px auto;
+        width: 700px;
+        height: 700px;
+      }
+
+      button {
+        margin-right: 10px;
+        padding: 10px 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Варіант 4208</h1>
+    <div id="buttons">
+      <button onclick="drawDirected()">Напрямлений граф</button>
+      <button onclick="drawUndirected()">Ненапрямлений граф</button>
+    </div>
+
+    <canvas id="canvas" width="600" height="600"></canvas>
+
+    <script src="script.js"></script>
+  </body>
+</html>
