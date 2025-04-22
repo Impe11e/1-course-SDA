@@ -1,0 +1,6 @@
+# depslib dependency file v1.0
+1732128808 source:c:\users\mikel\desktop\acd\lab5\main\main.c
+	<stdio.h>
+	<stdlib.h>
+	<time.h>
+
