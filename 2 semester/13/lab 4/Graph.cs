@@ -1,4 +1,4 @@
-using SFML.Graphics;
+giusing SFML.Graphics;
 using SFML.Window;
 using SFML.System;
 using System;
