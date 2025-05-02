@@ -5,7 +5,7 @@ const seed = 4208;
 const n3 = 0;
 const n4 = 8;
 const n = 10;
-const k1 = 1.0 - n3 * 0.01 - n4 * 0.01 - 0.3;
+const k1 = 1.0 - n3 * 0.02 - n4 * 0.005 - 0.25;
 const w = canvas.width;
 const h = canvas.height;
 
