@@ -1,8 +1,8 @@
-[submodule "1 semester/29 (1 semester only)"]
-	path = 1 semester/29 (1 semester only)
+[submodule "1 semester/29"]
+	path = 1 semester/29
 	url = https://github.com/theammir/asd-labs
-[submodule "2 semester/28 (2 semester only)"]
-	path = 2 semester/28 (2 semester only)
+[submodule "2 semester/28"]
+	path = 2 semester/28
 	url = https://github.com/theammir/asd-labs
 [submodule "2 semester/11/lab3"]
 	path = 2 semester/11/lab3
