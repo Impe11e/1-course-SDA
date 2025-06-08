@@ -227,7 +227,7 @@ printMatrix(dirMatrix1, 'Directed Matrix');
 drawGraph(dirMatrix1, ctx1, true, n);
 
 //**************
-//lab 5
+//lab5
 //**************
 
 function getDFSorder(matrix) {
