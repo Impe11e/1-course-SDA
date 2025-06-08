@@ -4,3 +4,15 @@
 [submodule "2 semester/28 (2 semester only)"]
 	path = 2 semester/28 (2 semester only)
 	url = https://github.com/theammir/asd-labs
+[submodule "2 semester/11/lab3"]
+	path = 2 semester/11/lab3
+	url = https://github.com/AnnKuts/1-course-sda-lab3
+[submodule "2 semester/11/lab4"]
+	path = 2 semester/11/lab4
+	url = https://github.com/AnnKuts/1-course-sda-lab4
+[submodule "2 semester/11/lab5"]
+	path = 2 semester/11/lab5
+	url = https://github.com/AnnKuts/1-course-sda-lab5
+[submodule "2 semester/11/lab6"]
+	path = 2 semester/11/lab6
+	url = https://github.com/AnnKuts/1-course-sda-lab5
