@@ -1,0 +1,5 @@
+Mark: 9/10
+Programming language: Java
+
+P.S. There was an error with overlapping arrows on the graph for bidirectional edges.
+This error was corrected, thus the mark should be 10/10.
