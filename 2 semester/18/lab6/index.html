@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graphs with Minimum Spanning Tree</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+
+    canvas {
+      border: 1px solid #000;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      margin: 10px 0;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-bottom: 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      transition: background-color 0.2s ease;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin: 0 auto;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 6px;
+      text-align: center;
+      min-width: 25px;
+    }
+
+    th {
+      background-color: #f2f2f2;
+      position: sticky;
+      top: 0;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+
+    .inputs {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    input {
+      padding: 5px 10px;
+      outline: none;
+      transition: border-color 0.2s ease, color 0.2s ease;
+    }
+
+    input:focus, input:hover {
+      border-color: #45a049;
+      color: #45a049;
+    }
+
+    .graph-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-around;
+      width: 100%;
+    }
+
+    .graph-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .step-info {
+      margin: 10px 0;
+      padding: 10px;
+      background-color: #f0f0f0;
+      border-radius: 4px;
+      width: 80%;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+<h1>Graphs with Minimum Spanning Tree</h1>
+
+<div class="container">
+  <h2>k = 1.0 + n3 * 0.01 + n4 * 0.005 + 0.05</h2>
+
+  <div class="inputs">
+    <label>n1 = <input id="input-1" type="text" value="4"></label>
+    <label>n2 = <input id="input-2" type="text" value="3"></label>
+    <label>n3 = <input id="input-3" type="text" value="1"></label>
+    <label>n4 = <input id="input-4" type="text" value="8"></label>
+    <label>seed = <input id="input-seed" type="text"></label>
+  </div>
+</div>
+
+<button id="generateBtn">Generate graphs</button>
+
+<div class="container">
+  <h2 id="seed"></h2>
+</div>
+
+<div class="container">
+  <h2>Adjacency matrix</h2>
+  <table id="table" class="table"></table>
+</div>
+
+<div class="container">
+  <h2>Weight matrix</h2>
+  <table id="weightTable" class="table"></table>
+</div>
+
+<button id="stepBtn" disabled>Next Step</button>
+<div class="step-info" id="stepInfo"></div>
+
+<div class="graph-container">
+  <div class="graph-wrapper">
+    <h2>Undirected weighted graph</h2>
+    <canvas id="undirectedGraph" width="600" height="600"></canvas>
+  </div>
+  <div class="graph-wrapper">
+    <h2>Minimum Spanning Tree</h2>
+    <canvas id="mstGraph" width="600" height="600"></canvas>
+  </div>
+</div>
+
+<script>
+  const VERTEX_COUNT = 10
+  const GRID_COLS = 4
+  const GRID_ROWS = 3
+
+  const VERTEX_RADIUS = 25
+  const LOOP_EDGE_RADIUS = 30
+  const CURVE_MULTIPLY_SIDES = 5
+  const CURVE_MULTIPLY_CENTER = 3
+  const EDGE_COLOR = "#555"
+  const MST_EDGE_COLOR = "#ff5722"
+  const VERTEX_COLOR = "#4CAF50"
+  const TEXT_COLOR = "white"
+
+  const PADDINGS = 60
+
+  const undirectedCanvas = document.getElementById("undirectedGraph")
+  const mstCanvas = document.getElementById("mstGraph")
+  const undirectedCtx = undirectedCanvas.getContext("2d")
+  const mstCtx = mstCanvas.getContext("2d")
+  const generateBtn = document.getElementById("generateBtn")
+  const stepBtn = document.getElementById("stepBtn")
+  const stepInfo = document.getElementById("stepInfo")
+  const inputSeed = document.getElementById("input-seed")
+  const inputs = []
+
+  for (let i = 1; i <= 4; i++) {
+    const input = document.getElementById(`input-${i}`)
+    inputs.push(input)
+  }
+
+  updateSeedFromInputs()
+
+  class SeededRandom {
+    constructor(seed) {
+      this.seed = seed
+    }
+
+    next() {
+      const a = 1664525
+      const c = 1013904223
+      const m = 2 ** 32
+
+      this.seed = (a * this.seed + c) % m
+      return this.seed / m
+    }
+  }
+
+  let rng
+  let adjacencyMatrix = []
+  let weightMatrix = []
+  let mstAlgorithm = null
+  let vertexPositions = []
+  let currentStep = 0
+
+  function updateSeedFromInputs() {
+    const seed = parseInt(inputs.map(input => input.value).join(""))
+    inputSeed.value = seed
+    return seed
+  }
+
+  function calculateK() {
+    const n3 = parseFloat(inputs[2].value)
+    const n4 = parseFloat(inputs[3].value)
+    return 1.0 + n3 * 0.01 + n4 * 0.005 + 0.05
+  }
+
+  function generateAdjacencyMatrix() {
+    const k = calculateK()
+    return Array(VERTEX_COUNT)
+      .fill(null)
+      .map(() => Array(VERTEX_COUNT)
+        .fill(0)
+        .map(() => {
+          const value = 2 * k * rng.next()
+          return value >= 1.0 ? 1 : 0
+        })
+      )
+  }
+
+  function generateWeightMatrix(adjMatrix) {
+    const B = Array(VERTEX_COUNT)
+      .fill(null)
+      .map(() => Array(VERTEX_COUNT)
+        .fill(0)
+        .map(() => 2 * rng.next())
+      )
+
+    const C = Array(VERTEX_COUNT)
+      .fill(null)
+      .map((_, i) => Array(VERTEX_COUNT)
+        .fill(0)
+        .map((_, j) =>
+          adjMatrix[i][j] ? Math.ceil(B[i][j] * 100 * adjMatrix[i][j]) : 0
+        )
+      )
+
+    const D = Array(VERTEX_COUNT)
+      .fill(null)
+      .map((_, i) => Array(VERTEX_COUNT)
+        .fill(0)
+        .map((_, j) => C[i][j] > 0 ? 1 : 0)
+      )
+
+    const H = Array(VERTEX_COUNT)
+      .fill(null)
+      .map((_, i) => Array(VERTEX_COUNT)
+        .fill(0)
+        .map((_, j) => D[i][j] !== D[j][i] ? 1 : 0)
+      )
+
+    const Tr = Array(VERTEX_COUNT)
+      .fill(null)
+      .map((_, i) => Array(VERTEX_COUNT)
+        .fill(0)
+        .map((_, j) => i < j ? 1 : 0)
+      )
+
+    return Array(VERTEX_COUNT)
+      .fill(null)
+      .map((_, i) => Array(VERTEX_COUNT)
+        .fill(0)
+        .map((_, j) => {
+          const value = (D[i][j] + H[i][j] * Tr[i][j]) * C[i][j]
+          return Math.max(value, (D[j][i] + H[j][i] * Tr[j][i]) * C[j][i])
+        })
+      )
+  }
+
+  function calculateVertexPositions(canvas) {
+    const positions = []
+    const width = canvas.width - 2 * (PADDINGS + VERTEX_RADIUS)
+    const height = canvas.height - 2 * (PADDINGS + VERTEX_RADIUS)
+
+    const colStep = width / (GRID_COLS - 1)
+    const rowStep = height / (GRID_ROWS - 1)
+
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        if ((row === 0 || row === GRID_ROWS - 1) || (col === 0 || col === GRID_COLS - 1)) {
+          const x = PADDINGS + VERTEX_RADIUS + colStep * col
+          const y = PADDINGS + VERTEX_RADIUS + rowStep * row
+          positions.push({ x, y })
+        }
+      }
+    }
+
+    positions.push({
+      x: PADDINGS + VERTEX_RADIUS + width / 2,
+      y: PADDINGS + VERTEX_RADIUS + height / 2
+    })
+
+    return positions
+  }
+
+  function drawVertex(ctx, x, y, index) {
+    ctx.beginPath()
+    ctx.arc(x, y, VERTEX_RADIUS, 0, Math.PI * 2)
+    ctx.fillStyle = VERTEX_COLOR
+    ctx.fill()
+    ctx.stroke()
+
+    ctx.fillStyle = TEXT_COLOR
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.font = "18px Arial"
+    ctx.fillText(index + 1, x, y)
+  }
+
+  function normalize(dx, dy) {
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    return {
+      nx: dx / distance,
+      ny: dy / distance
+    }
+  }
+
+  function shouldBendEdge(from, to, positions, checkIndex) {
+    if (from === to || checkIndex === from || checkIndex === to) return false
+
+    const start = positions[from]
+    const end = positions[to]
+    const check = positions[checkIndex]
+
+    const distance = distanceFromPointToLine(check, start, end)
+
+    return distance < VERTEX_RADIUS
+  }
+
+  function distanceFromPointToLine(point, lineStart, lineEnd) {
+    if (
+      Math.min(lineStart.x, lineEnd.x) > point.x ||
+      Math.max(lineStart.x, lineEnd.x) < point.x ||
+      Math.min(lineStart.y, lineEnd.y) > point.y ||
+      Math.max(lineStart.y, lineEnd.y) < point.y
+    ) return Infinity
+
+    const x = point.x
+    const y = point.y
+    const x1 = lineStart.x
+    const y1 = lineStart.y
+    const x2 = lineEnd.x
+    const y2 = lineEnd.y
+    const dx = x2 - x1
+    const dy = y2 - y1
+
+    if ((dx === 0 && x === x1) || (dy === 0 && y === y1)) return 0
+
+    return Math.abs(dy * (x - x1) - dx * (y - y1)) / Math.sqrt(dx * dx + dy * dy)
+  }
+
+  function drawEdge(ctx, from, to, positions, weight, isMstEdge = false) {
+    if (from === to) {
+      drawLoopEdge(ctx, from, positions, weight, isMstEdge)
+      return
+    }
+
+    const start = positions[from]
+    const end = positions[to]
+
+    let shouldBend = false
+    let bendVertex = -1
+
+    for (let i = 0; i < positions.length; i++) {
+      if (shouldBendEdge(from, to, positions, i)) {
+        shouldBend = true
+        bendVertex = i
+        break
+      }
+    }
+
+    const dx = end.x - start.x
+    const dy = end.y - start.y
+    const { nx, ny } = normalize(dx, dy)
+
+    const startX = start.x + nx * VERTEX_RADIUS
+    const startY = start.y + ny * VERTEX_RADIUS
+    const endX = end.x - nx * VERTEX_RADIUS
+    const endY = end.y - ny * VERTEX_RADIUS
+
+    ctx.beginPath()
+
+    const midX = (startX + endX) / 2
+    const midY = (startY + endY) / 2
+    let controlX = midX
+    let controlY = midY
+
+    if (shouldBend) {
+      if (dx === 0) {
+        controlX += Math.sign(midX - ctx.canvas.width / 2 + VERTEX_RADIUS) * CURVE_MULTIPLY_SIDES * VERTEX_RADIUS
+      } else if (dy === 0) {
+        controlY += Math.sign(midY - ctx.canvas.height / 2 + VERTEX_RADIUS) * CURVE_MULTIPLY_SIDES * VERTEX_RADIUS
+      } else {
+        controlX += CURVE_MULTIPLY_CENTER * nx * VERTEX_RADIUS
+        controlY -= CURVE_MULTIPLY_CENTER / ny * VERTEX_RADIUS
+      }
+    }
+
+    ctx.moveTo(startX, startY)
+    ctx.quadraticCurveTo(controlX, controlY, endX, endY)
+
+    ctx.strokeStyle = isMstEdge ? MST_EDGE_COLOR : EDGE_COLOR
+    ctx.lineWidth = isMstEdge ? 3 : 1
+    ctx.stroke()
+
+    const textX = controlX + (isMstEdge ? 10 : 0)
+    const textY = controlY + (isMstEdge ? 10 : 0)
+
+    ctx.fillStyle = isMstEdge ? MST_EDGE_COLOR : "#000"
+    ctx.font = "14px Arial"
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.fillText(weight.toString(), textX, textY)
+  }
+
+  function drawLoopEdge(ctx, vertex, positions, weight, isMstEdge = false) {
+    const center = positions[vertex]
+    const angle = Math.PI / 4
+
+    ctx.beginPath()
+    ctx.arc(
+      center.x + (LOOP_EDGE_RADIUS + VERTEX_RADIUS / 2) * Math.cos(angle),
+      center.y - (LOOP_EDGE_RADIUS + VERTEX_RADIUS / 2) * Math.sin(angle),
+      LOOP_EDGE_RADIUS,
+      0,
+      Math.PI * 2
+    )
+    ctx.strokeStyle = isMstEdge ? MST_EDGE_COLOR : EDGE_COLOR
+    ctx.lineWidth = isMstEdge ? 3 : 1
+    ctx.stroke()
+
+    ctx.fillStyle = isMstEdge ? MST_EDGE_COLOR : "#000"
+    ctx.font = "14px Arial"
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.fillText(
+      weight.toString(),
+      center.x + (LOOP_EDGE_RADIUS + VERTEX_RADIUS) * Math.cos(angle),
+      center.y - (LOOP_EDGE_RADIUS + VERTEX_RADIUS) * Math.sin(angle)
+    )
+  }
+
+  function drawGraph(ctx, matrix, weightMatrix, positions, isMst = false) {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+    for (let i = 0; i < VERTEX_COUNT; i++) {
+      for (let j = i; j < VERTEX_COUNT; j++) {
+        if (matrix[i][j] === 1) {
+          drawEdge(ctx, i, j, positions, weightMatrix[i][j], isMst)
+        }
+      }
+    }
+
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i]
+      drawVertex(ctx, pos.x, pos.y, i)
+    }
+  }
+
+  function createMatrixTable(matrix, tableId) {
+    const table = document.getElementById(tableId)
+    table.innerHTML = ""
+
+    const thead = document.createElement("thead")
+    const headerRow = document.createElement("tr")
+
+    const emptyHeader = document.createElement("th")
+    headerRow.appendChild(emptyHeader)
+
+    for (let i = 0; i < VERTEX_COUNT; i++) {
+      const th = document.createElement("th")
+      th.textContent = i.toString()
+      headerRow.appendChild(th)
+    }
+
+    thead.appendChild(headerRow)
+    table.appendChild(thead)
+
+    const tbody = document.createElement("tbody")
+
+    for (let i = 0; i < VERTEX_COUNT; i++) {
+      const row = document.createElement("tr")
+
+      const rowHeader = document.createElement("th")
+      rowHeader.textContent = i.toString()
+      row.appendChild(rowHeader)
+
+      for (let j = 0; j < VERTEX_COUNT; j++) {
+        const cell = document.createElement("td")
+        if (i === j) cell.classList.add("diagonal")
+        cell.textContent = matrix[i][j]
+        cell.dataset.row = i.toString()
+        cell.dataset.col = j.toString()
+
+        row.appendChild(cell)
+      }
+
+      tbody.appendChild(row)
+    }
+
+    table.appendChild(tbody)
+  }
+
+  function updateSeed(seed) {
+    rng = new SeededRandom(seed)
+    const heading = document.getElementById("seed")
+    heading.innerHTML = `Seed: ${rng.seed}`
+  }
+
+  class KruskalMST {
+    constructor(adjMatrix, weightMatrix) {
+      this.adjMatrix = adjMatrix
+      this.weightMatrix = weightMatrix
+      this.edges = this.getSortedEdges()
+      this.parent = Array(VERTEX_COUNT).fill().map((_, i) => i)
+      this.mstEdges = []
+      this.currentEdgeIndex = 0
+      this.stepDescription = "Initializing Kruskal's algorithm..."
+    }
+
+    getSortedEdges() {
+      const edges = []
+      for (let i = 0; i < VERTEX_COUNT; i++) {
+        for (let j = i + 1; j < VERTEX_COUNT; j++) {
+          if (this.adjMatrix[i][j] === 1) {
+            edges.push({
+              u: i,
+              v: j,
+              weight: this.weightMatrix[i][j]
+            })
+          }
+        }
+      }
+      return edges.sort((a, b) => a.weight - b.weight)
+    }
+
+    find(u) {
+      while (this.parent[u] !== u) {
+        u = this.parent[u]
+      }
+      return u
+    }
+
+    union(u, v) {
+      const rootU = this.find(u)
+      const rootV = this.find(v)
+      if (rootU !== rootV) {
+        this.parent[rootV] = rootU
+        return true
+      }
+      return false
+    }
+
+    nextStep() {
+      if (this.currentEdgeIndex >= this.edges.length) {
+        this.stepDescription = "MST complete!"
+        return false
+      }
+
+      const edge = this.edges[this.currentEdgeIndex]
+      this.stepDescription = `Considering edge ${edge.u}-${edge.v} (weight: ${edge.weight})... `
+
+      if (this.union(edge.u, edge.v)) {
+        this.mstEdges.push(edge)
+        this.stepDescription += "Added to MST"
+      } else {
+        this.stepDescription += "Skipped (would create cycle)"
+      }
+
+      this.currentEdgeIndex++
+      return true
+    }
+
+    getMSTMatrix() {
+      const mstMatrix = Array(VERTEX_COUNT).fill().map(() => Array(VERTEX_COUNT).fill(0))
+      for (const edge of this.mstEdges) {
+        mstMatrix[edge.u][edge.v] = 1
+        mstMatrix[edge.v][edge.u] = 1
+      }
+      return mstMatrix
+    }
+  }
+
+  function initAndDrawGraphs(seed) {
+    updateSeed(seed)
+
+    currentStep = 0
+    stepBtn.disabled = false
+    stepInfo.textContent = "Click 'Next Step' to start building the MST"
+
+    adjacencyMatrix = generateAdjacencyMatrix()
+    weightMatrix = generateWeightMatrix(adjacencyMatrix)
+    vertexPositions = calculateVertexPositions(undirectedCanvas)
+
+    createMatrixTable(adjacencyMatrix, "table")
+    createMatrixTable(weightMatrix, "weightTable")
+
+    drawGraph(undirectedCtx, adjacencyMatrix, weightMatrix, vertexPositions)
+    drawGraph(mstCtx, Array(VERTEX_COUNT).fill().map(() => Array(VERTEX_COUNT).fill(0)),
+      weightMatrix, vertexPositions, true)
+
+    mstAlgorithm = new KruskalMST(adjacencyMatrix, weightMatrix)
+    stepInfo.textContent = "Using Kruskal's algorithm"
+  }
+
+  function performNextStep() {
+    if (mstAlgorithm && mstAlgorithm.nextStep()) {
+      const mstMatrix = mstAlgorithm.getMSTMatrix()
+      drawGraph(mstCtx, mstMatrix, weightMatrix, vertexPositions, true)
+      stepInfo.textContent = mstAlgorithm.stepDescription
+    } else {
+      stepBtn.disabled = true
+      if (mstAlgorithm) {
+        stepInfo.textContent = mstAlgorithm.stepDescription
+      }
+    }
+  }
+
+  window.onload = () => {
+    const seed = updateSeedFromInputs()
+    initAndDrawGraphs(seed)
+  }
+
+  generateBtn.addEventListener("click", () => {
+    const seed = updateSeedFromInputs()
+    initAndDrawGraphs(seed)
+  })
+
+  stepBtn.addEventListener("click", performNextStep)
+</script>
+</body>
+</html>
