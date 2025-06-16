@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graphs</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+
+    canvas {
+      border: 1px solid #000;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      margin: 10px 0;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-bottom: 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin: 0 auto;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 6px;
+      text-align: center;
+      min-width: 25px;
+    }
+
+    th {
+      background-color: #f2f2f2;
+      position: sticky;
+      top: 0;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+  </style>
+</head>
+<body>
+<h1>Graphs</h1>
+<button id="generateBtn">Generate graphs with random seed</button>
+
+<div class="container">
+  <h2 id="seed"></h2>
+</div>
+
+<div class="container">
+  <h2>Adjacency matrix</h2>
+  <table id="table" class="table"></table>
+</div>
+
+<div class="container">
+  <h2>Directed graph</h2>
+  <canvas id="directedGraph" width="900" height="600"></canvas>
+</div>
+
+<div class="container">
+  <h2>Undirected graph</h2>
+  <canvas id="undirectedGraph" width="900" height="600"></canvas>
+</div>
+
+<script>
+  const N = [4, 3, 1, 8]
+  const VERTEX_COUNT = 10 + N[2]
+  const GRID_COLS = 4
+  const GRID_ROWS = 3
+
+  const VERTEX_RADIUS = 25
+  const LOOP_EDGE_RADIUS = 30
+  const CURVE_MULTIPLY_SIDES = 5
+  const CURVE_MULTIPLY_CENTER = 3
+  const EDGE_COLOR = "#555"
+  const ARROW_COLOR = "#555"
+  const VERTEX_COLOR = "#4CAF50"
+  const TEXT_COLOR = "white"
+
+  const PADDINGS = 60
+
+  const directedCanvas = document.getElementById("directedGraph")
+  const undirectedCanvas = document.getElementById("undirectedGraph")
+  const directedCtx = directedCanvas.getContext("2d")
+  const undirectedCtx = undirectedCanvas.getContext("2d")
+  const generateBtn = document.getElementById("generateBtn")
+
+  class SeededRandom {
+    constructor(seed) {
+      this.seed = seed
+    }
+
+    next() {
+      const a = 1664525
+      const c = 1013904223
+      const m = 2 ** 32
+
+      this.seed = (a * this.seed + c) % m
+      return this.seed / m
+    }
+  }
+
+  let rng
+
+  function generateAdjacencyMatrix() {
+    const k = 0.75 - 0.02 * N[2] - 0.005 * N[3]
+    return Array(VERTEX_COUNT)
+      .fill(null)
+      .map(() => Array(VERTEX_COUNT)
+        .fill(0)
+        .map(() => 2 * k * rng.next() >= 1
+          ? 1
+          : 0
+        )
+      )
+  }
+
+  function calculateVertexPositions(canvas) {
+    const positions = []
+    const width = canvas.width - 2 * (PADDINGS + VERTEX_RADIUS)
+    const height = canvas.height - 2 * (PADDINGS + VERTEX_RADIUS)
+
+    const colStep = width / (GRID_COLS - 1)
+    const rowStep = height / (GRID_ROWS - 1)
+
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        if ((row === 0 || row === GRID_ROWS - 1) || (col === 0 || col === GRID_COLS - 1)) {
+          const x = PADDINGS + VERTEX_RADIUS + colStep * col
+          const y = PADDINGS + VERTEX_RADIUS + rowStep * row
+          positions.push({ x, y })
+        }
+      }
+    }
+
+    positions.push({
+      x: PADDINGS + VERTEX_RADIUS + width / 2,
+      y: PADDINGS + VERTEX_RADIUS + height / 2
+    })
+
+    return positions
+  }
+
+  function drawVertex(ctx, x, y, index) {
+    ctx.beginPath()
+    ctx.arc(x, y, VERTEX_RADIUS, 0, Math.PI * 2)
+    ctx.fillStyle = VERTEX_COLOR
+    ctx.fill()
+    ctx.stroke()
+
+    ctx.fillStyle = TEXT_COLOR
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.font = "18px Arial"
+    ctx.fillText(index + 1, x, y)
+  }
+
+  function normalize(dx, dy) {
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    return {
+      nx: dx / distance,
+      ny: dy / distance
+    }
+  }
+
+  function shouldBendEdge(from, to, positions, checkIndex) {
+    if (from === to || checkIndex === from || checkIndex === to) return false
+
+    const start = positions[from]
+    const end = positions[to]
+    const check = positions[checkIndex]
+
+    const distance = distanceFromPointToLine(check, start, end)
+
+    return distance < VERTEX_RADIUS
+  }
+
+  function distanceFromPointToLine(point, lineStart, lineEnd) {
+    if (
+      Math.min(lineStart.x, lineEnd.x) > point.x ||
+      Math.max(lineStart.x, lineEnd.x) < point.x ||
+      Math.min(lineStart.y, lineEnd.y) > point.y ||
+      Math.max(lineStart.y, lineEnd.y) < point.y
+    ) return Infinity
+
+    const x = point.x
+    const y = point.y
+    const x1 = lineStart.x
+    const y1 = lineStart.y
+    const x2 = lineEnd.x
+    const y2 = lineEnd.y
+    const dx = x2 - x1
+    const dy = y2 - y1
+
+    if ((dx === 0 && x === x1) || (dy === 0 && y === y1)) return 0
+
+    return Math.abs(dy * (x - x1) - dx * (y - y1)) / Math.sqrt(dx * dx + dy * dy)
+  }
+
+  function drawEdge(ctx, from, to, positions, isDirected, isDouble = false) {
+    if (from === to) {
+      drawLoopEdge(ctx, from, positions, isDirected)
+      return
+    }
+
+    const start = positions[from]
+    const end = positions[to]
+
+    let shouldBend = false
+    let bendVertex = -1
+
+    for (let i = 0; i < positions.length; i++) {
+      if (shouldBendEdge(from, to, positions, i)) {
+        shouldBend = true
+        bendVertex = i
+        break
+      }
+    }
+
+    const dx = end.x - start.x
+    const dy = end.y - start.y
+    const { nx, ny } = normalize(dx, dy)
+
+    const startX = start.x + nx * VERTEX_RADIUS
+    const startY = start.y + ny * VERTEX_RADIUS
+    const endX = end.x - nx * VERTEX_RADIUS
+    const endY = end.y - ny * VERTEX_RADIUS
+
+    let endVectorNormal
+
+    ctx.beginPath()
+
+    const midX = (startX + endX) / 2
+    const midY = (startY + endY) / 2
+    let controlX = midX
+    let controlY = midY
+
+    if (shouldBend || isDouble) {
+      let doubleMultiply = 1
+
+      if (isDouble) {
+        doubleMultiply = 15 / VERTEX_RADIUS
+      }
+
+      if (dx === 0) {
+        controlX += Math.sign(midX - ctx.canvas.width / 2 + VERTEX_RADIUS) * CURVE_MULTIPLY_SIDES * VERTEX_RADIUS * doubleMultiply
+      } else if (dy === 0) {
+        controlY += Math.sign(midY - ctx.canvas.height / 2 + VERTEX_RADIUS) * CURVE_MULTIPLY_SIDES * VERTEX_RADIUS * doubleMultiply
+      } else {
+        if (isDouble) {
+          doubleMultiply = 10 / VERTEX_RADIUS
+        }
+
+        if (shouldBend && isDouble) {
+          doubleMultiply = 1.2
+        }
+
+        controlX += CURVE_MULTIPLY_CENTER * nx * VERTEX_RADIUS * doubleMultiply
+        controlY -= CURVE_MULTIPLY_CENTER / ny * VERTEX_RADIUS * doubleMultiply
+      }
+    }
+
+    ctx.moveTo(startX, startY)
+    ctx.quadraticCurveTo(controlX, controlY, endX, endY)
+
+    const endVectorX = endX - controlX
+    const endVectorY = endY - controlY
+    endVectorNormal = normalize(endVectorX, endVectorY)
+
+    ctx.strokeStyle = EDGE_COLOR
+    ctx.stroke()
+
+    if (isDirected) {
+      drawArrow(ctx, endX, endY, Math.atan2(endVectorNormal.ny, endVectorNormal.nx))
+    }
+  }
+
+  function drawLoopEdge(ctx, vertex, positions, isDirected) {
+    const center = positions[vertex]
+    const angle = Math.PI / 4
+
+    ctx.beginPath()
+    ctx.arc(
+      center.x + (LOOP_EDGE_RADIUS + VERTEX_RADIUS / 2) * Math.cos(angle),
+      center.y - (LOOP_EDGE_RADIUS + VERTEX_RADIUS / 2) * Math.sin(angle),
+      LOOP_EDGE_RADIUS,
+      0,
+      Math.PI * 2
+    )
+    ctx.strokeStyle = EDGE_COLOR
+    ctx.stroke()
+
+    if (isDirected) {
+      const arrowX = center.x + VERTEX_RADIUS * Math.cos(angle + Math.PI / 4)
+      const arrowY = center.y - VERTEX_RADIUS * Math.sin(angle + Math.PI / 4)
+      drawArrow(ctx, arrowX, arrowY, angle + Math.PI / 4)
+    }
+  }
+
+  function drawArrow(ctx, x, y, angle) {
+    const arrowSize = 10
+
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(
+      x - arrowSize * Math.cos(angle - Math.PI / 6),
+      y - arrowSize * Math.sin(angle - Math.PI / 6)
+    )
+    ctx.lineTo(
+      x - arrowSize * Math.cos(angle + Math.PI / 6),
+      y - arrowSize * Math.sin(angle + Math.PI / 6)
+    )
+    ctx.closePath()
+    ctx.fillStyle = ARROW_COLOR
+    ctx.fill()
+  }
+
+  function drawGraph(ctx, matrix, positions, isDirected) {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+    for (let i = 0; i < VERTEX_COUNT; i++) {
+      for (let j = 0; j < VERTEX_COUNT; j++) {
+        if (matrix[i][j] === 1) {
+          drawEdge(ctx, i, j, positions, isDirected, isDirected && matrix[j][i] === 1 && j > i)
+        }
+      }
+    }
+
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i]
+      drawVertex(ctx, pos.x, pos.y, i)
+    }
+  }
+
+  function createMatrixTable(matrix) {
+    const table = document.getElementById("table")
+    table.innerHTML = ""
+
+    const thead = document.createElement("thead")
+    const headerRow = document.createElement("tr")
+
+    const emptyHeader = document.createElement("th")
+    headerRow.appendChild(emptyHeader)
+
+    for (let i = 0; i < VERTEX_COUNT; i++) {
+      const th = document.createElement("th")
+      th.textContent = i.toString()
+      headerRow.appendChild(th)
+    }
+
+    thead.appendChild(headerRow)
+    table.appendChild(thead)
+
+    const tbody = document.createElement("tbody")
+
+    for (let i = 0; i < VERTEX_COUNT; i++) {
+      const row = document.createElement("tr")
+
+      const rowHeader = document.createElement("th")
+      rowHeader.textContent = i.toString()
+      row.appendChild(rowHeader)
+
+      for (let j = 0; j < VERTEX_COUNT; j++) {
+        const cell = document.createElement("td")
+        if (i === j) cell.classList.add("diagonal")
+        cell.textContent = matrix[i][j]
+        cell.dataset.row = i.toString()
+        cell.dataset.col = j.toString()
+
+        row.appendChild(cell)
+      }
+
+      tbody.appendChild(row)
+    }
+
+    table.appendChild(tbody)
+  }
+
+  function updateSeed(seed) {
+    rng = new SeededRandom(seed)
+    const heading = document.getElementById("seed" + "")
+    heading.innerHTML = `Seed: ${rng.seed}`
+  }
+
+  function initAndDrawGraphs(seed) {
+    updateSeed(seed)
+
+    const matrix = generateAdjacencyMatrix()
+    const directedPositions = calculateVertexPositions(directedCanvas)
+    const undirectedPositions = calculateVertexPositions(undirectedCanvas)
+
+    createMatrixTable(matrix)
+
+    drawGraph(directedCtx, matrix, directedPositions, true)
+
+    const undirectedMatrix = JSON.parse(JSON.stringify(matrix))
+    for (let i = 0; i < VERTEX_COUNT; i++) {
+      for (let j = 0; j < VERTEX_COUNT; j++) {
+        if (undirectedMatrix[i][j] === 1) {
+          undirectedMatrix[j][i] = 1
+        }
+      }
+    }
+
+    drawGraph(undirectedCtx, undirectedMatrix, undirectedPositions, false)
+  }
+
+  window.onload = () => initAndDrawGraphs(parseInt(N.join("")))
+
+  generateBtn.addEventListener("click", () => initAndDrawGraphs(Math.floor(Math.random() * 10000)))
+</script>
+</body>
+</html>

@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graph Traversal</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+
+    canvas {
+      border: 1px solid #000;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      margin: 10px 0;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 5px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      transition: background-color 0.2s ease;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin: 0 auto;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 6px;
+      text-align: center;
+      min-width: 25px;
+    }
+
+    th {
+      background-color: #f2f2f2;
+      position: sticky;
+      top: 0;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+
+    .inputs {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    input {
+      padding: 5px 10px;
+      outline: none;
+      transition: border-color 0.2s ease, color 0.2s ease;
+    }
+
+    input:focus, input:hover {
+      border-color: #45a049;
+      color: #45a049;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .tree-container {
+      display: flex;
+      justify-content: center;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+<h1>Graph Traversal</h1>
+
+<div class="container">
+  <h2>k = 1.0 + n3 * 0.01 + n4 * 0.005 + 0.15</h2>
+
+  <div class="inputs">
+    <label>n1 = <input id="input-1" type="text" value="4"></label>
+    <label>n2 = <input id="input-2" type="text" value="3"></label>
+    <label>n3 = <input id="input-3" type="text" value="1"></label>
+    <label>n4 = <input id="input-4" type="text" value="8"></label>
+    <label>seed = <input id="input-seed" type="text"></label>
+  </div>
+</div>
+
+<button id="generateBtn">Generate graph</button>
+
+<div class="container">
+  <h2 id="seed"></h2>
+</div>
+
+<div class="container">
+  <h2>Adjacency matrix</h2>
+  <table id="table" class="table"></table>
+</div>
+
+<div class="container">
+  <h2>Directed graph</h2>
+  <canvas id="directedGraph" width="900" height="600"></canvas>
+
+  <div class="controls">
+    <button id="bfsBtn">Start BFS</button>
+    <button id="dfsBtn">Start DFS</button>
+    <button id="nextStepBtn" disabled>Next Step</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+  <div class="tree-container">
+    <canvas id="traversalTree" width="600" height="400"></canvas>
+  </div>
+</div>
+
+<script>
+  const VERTEX_COUNT = 11
+  const GRID_COLS = 4
+  const GRID_ROWS = 3
+
+  const VERTEX_RADIUS = 25
+  const LOOP_EDGE_RADIUS = 30
+  const CURVE_MULTIPLY_SIDES = 5
+  const CURVE_MULTIPLY_CENTER = 3
+  const EDGE_COLOR = "#555"
+  const ARROW_COLOR = "#555"
+  const VERTEX_COLOR = "#4CAF50"
+  const VISITED_COLOR = "#FF5722"
+  const CURRENT_COLOR = "#2196F3"
+  const TREE_EDGE_COLOR = "#8BC34A"
+  const TEXT_COLOR = "white"
+
+  const PADDINGS = 60
+
+  const directedCanvas = document.getElementById("directedGraph")
+  const treeCanvas = document.getElementById("traversalTree")
+  const directedCtx = directedCanvas.getContext("2d")
+  const treeCtx = treeCanvas.getContext("2d")
+  const generateBtn = document.getElementById("generateBtn")
+  const bfsBtn = document.getElementById("bfsBtn")
+  const dfsBtn = document.getElementById("dfsBtn")
+  const nextStepBtn = document.getElementById("nextStepBtn")
+  const resetBtn = document.getElementById("resetBtn")
+  const inputSeed = document.getElementById("input-seed")
+  const inputs = []
+
+  for (let i = 0; i < 4; i++) {
+    const input = document.getElementById(`input-${i + 1}`)
+    inputs.push(input)
+  }
+
+
+  function updateSeedInput() {
+    const seed = inputs.map(input => input.value).join("")
+    inputSeed.value = seed
+    return parseInt(seed)
+  }
+
+  inputSeed.value = updateSeedInput()
+  inputs.forEach(input => input.addEventListener("change", updateSeedInput))
+
+  class SeededRandom {
+    constructor(seed) {
+      this.seed = seed
+    }
+
+    next() {
+      const a = 1664525
+      const c = 1013904223
+      const m = 2 ** 32
+
+      this.seed = (a * this.seed + c) % m
+      return this.seed / m
+    }
+  }
+
+  let rng
+  let adjacencyMatrix = []
+  let vertexPositions = []
+  let traversal = null
+  let traversalType = null
+  let traversalHistory = []
+  let treeEdges = []
+
+  function calculateK() {
+    const n3 = parseInt(inputs[2].value)
+    const n4 = parseInt(inputs[3].value)
+    return 1.0 + n3 * 0.01 + n4 * 0.005 + 0.15
+  }
+
+  function generateAdjacencyMatrix() {
+    const k = calculateK()
+    const matrix = Array(VERTEX_COUNT).fill().map(() => Array(VERTEX_COUNT).fill(0))
+
+    for (let i = 0; i < VERTEX_COUNT; i++) {
+      for (let j = 0; j < VERTEX_COUNT; j++) {
+        const randomValue = rng.next() * 2 * k
+        matrix[i][j] = randomValue >= 1.0 ? 1 : 0
+      }
+    }
+
+    return matrix
+  }
+
+  function getStartVertex(matrix) {
+    for (let i = 0; i < matrix.length; i++) {
+      if (matrix[i].some(val => val === 1)) {
+        return i
+      }
+    }
+    return 0
+  }
+
+  function createBFS(matrix) {
+    const visited = new Array(matrix.length).fill(false)
+    const queue = []
+    const result = []
+    const parents = new Array(matrix.length).fill(-1)
+    let startVertex = getStartVertex(matrix)
+
+    visited[startVertex] = true
+    queue.push(startVertex)
+
+    return {
+      result: () => result,
+      done: () => queue.length === 0 && !hasUnvisitedVertices(visited, matrix),
+      next: () => {
+        if (queue.length === 0) {
+          startVertex = findNextStartVertex(visited, matrix)
+          if (startVertex !== -1) {
+            visited[startVertex] = true
+            queue.push(startVertex)
+            result.push(-1)
+          } else {
+            return
+          }
+        }
+
+        const currentVertex = queue.shift()
+        result.push(currentVertex)
+
+        for (let i = 0; i < matrix[currentVertex].length; i++) {
+          if (matrix[currentVertex][i] === 1 && !visited[i]) {
+            visited[i] = true
+            parents[i] = currentVertex
+            treeEdges.push([currentVertex, i])
+            queue.push(i)
+          }
+        }
+      },
+      getParents: () => parents
+    }
+  }
+
+  function createDFS(matrix) {
+    const visited = new Array(matrix.length).fill(false)
+    const stack = []
+    const result = []
+    const parents = new Array(matrix.length).fill(-1)
+    let startVertex = getStartVertex(matrix)
+
+    stack.push(startVertex)
+
+    return {
+      result: () => result,
+      done: () => stack.length === 0 && !hasUnvisitedVertices(visited, matrix),
+      next: () => {
+        if (stack.length === 0) {
+          startVertex = findNextStartVertex(visited, matrix)
+          if (startVertex !== -1) {
+            stack.push(startVertex)
+            result.push(-1)
+          }
+          return
+        }
+
+        const currentVertex = stack.pop()
+
+        if (!visited[currentVertex]) {
+          visited[currentVertex] = true
+          result.push(currentVertex)
+
+          for (let i = matrix[currentVertex].length - 1; i >= 0; i--) {
+            if (matrix[currentVertex][i] === 1 && !visited[i]) {
+              parents[i] = currentVertex
+              treeEdges.push([currentVertex, i])
+              stack.push(i)
+            }
+          }
+        }
+      },
+      getParents: () => parents
+    }
+  }
+
+  function hasUnvisitedVertices(visited, matrix) {
+    for (let i = 0; i < visited.length; i++) {
+      if (!visited[i] && matrix[i].some(val => val === 1)) {
+        return true
+      }
+    }
+    return false
+  }
+
+  function findNextStartVertex(visited, matrix) {
+    for (let i = 0; i < visited.length; i++) {
+      if (!visited[i] && matrix[i].some(val => val === 1)) {
+        return i
+      }
+    }
+    return -1
+  }
+
+  function calculateVertexPositions(canvas) {
+    const positions = []
+    const width = canvas.width - 2 * (PADDINGS + VERTEX_RADIUS)
+    const height = canvas.height - 2 * (PADDINGS + VERTEX_RADIUS)
+
+    const colStep = width / (GRID_COLS - 1)
+    const rowStep = height / (GRID_ROWS - 1)
+
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        if ((row === 0 || row === GRID_ROWS - 1) || (col === 0 || col === GRID_COLS - 1)) {
+          const x = PADDINGS + VERTEX_RADIUS + colStep * col
+          const y = PADDINGS + VERTEX_RADIUS + rowStep * row
+          positions.push({ x, y })
+        }
+      }
+    }
+
+    positions.push({
+      x: PADDINGS + VERTEX_RADIUS + width / 2,
+      y: PADDINGS + VERTEX_RADIUS + height / 2
+    })
+
+    return positions
+  }
+
+  function drawVertex(ctx, x, y, index, isCurrent = false, isVisited = false) {
+    ctx.beginPath()
+    ctx.arc(x, y, VERTEX_RADIUS, 0, Math.PI * 2)
+
+    if (isCurrent) {
+      ctx.fillStyle = CURRENT_COLOR
+    } else if (isVisited) {
+      ctx.fillStyle = VISITED_COLOR
+    } else {
+      ctx.fillStyle = VERTEX_COLOR
+    }
+
+    ctx.fill()
+    ctx.stroke()
+
+    ctx.fillStyle = TEXT_COLOR
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.font = "18px Arial"
+    ctx.fillText(index + 1, x, y)
+  }
+
+  function drawEdge(ctx, from, to, positions, isDirected, isTreeEdge = false, isDouble = false) {
+    if (from === to) {
+      drawLoopEdge(ctx, from, positions, isDirected, isTreeEdge)
+      return
+    }
+
+    const start = positions[from]
+    const end = positions[to]
+
+    let shouldBend = false
+    let bendVertex = -1
+
+    for (let i = 0; i < positions.length; i++) {
+      if (shouldBendEdge(from, to, positions, i)) {
+        shouldBend = true
+        bendVertex = i
+        break
+      }
+    }
+
+    const dx = end.x - start.x
+    const dy = end.y - start.y
+    const { nx, ny } = normalize(dx, dy)
+    const startX = start.x + nx * VERTEX_RADIUS
+    const startY = start.y + ny * VERTEX_RADIUS
+    const endX = end.x - nx * VERTEX_RADIUS
+    const endY = end.y - ny * VERTEX_RADIUS
+
+    let endVectorNormal
+
+    ctx.beginPath()
+
+    const midX = (startX + endX) / 2
+    const midY = (startY + endY) / 2
+    let controlX = midX
+    let controlY = midY
+
+    if (shouldBend || isDouble) {
+      let doubleMultiply = 1
+
+      if (isDouble) {
+        doubleMultiply = 15 / VERTEX_RADIUS
+      }
+
+      if (dx === 0) {
+        controlX += Math.sign(midX - ctx.canvas.width / 2 + VERTEX_RADIUS) * CURVE_MULTIPLY_SIDES * VERTEX_RADIUS * doubleMultiply
+      } else if (dy === 0) {
+        controlY += Math.sign(midY - ctx.canvas.height / 2 + VERTEX_RADIUS) * CURVE_MULTIPLY_SIDES * VERTEX_RADIUS * doubleMultiply
+      } else {
+        if (isDouble) {
+          doubleMultiply = 10 / VERTEX_RADIUS
+        }
+
+        if (shouldBend && isDouble) {
+          doubleMultiply = 1.2
+        }
+
+        controlX += CURVE_MULTIPLY_CENTER * nx * VERTEX_RADIUS * doubleMultiply
+        controlY -= CURVE_MULTIPLY_CENTER / ny * VERTEX_RADIUS * doubleMultiply
+      }
+    }
+
+    ctx.moveTo(startX, startY)
+    ctx.quadraticCurveTo(controlX, controlY, endX, endY)
+
+    const endVectorX = endX - controlX
+    const endVectorY = endY - controlY
+    endVectorNormal = normalize(endVectorX, endVectorY)
+
+    ctx.strokeStyle = isTreeEdge ? TREE_EDGE_COLOR : EDGE_COLOR
+    ctx.lineWidth = isTreeEdge ? 3 : 1
+    ctx.stroke()
+    ctx.lineWidth = 1
+
+    if (isDirected) {
+      drawArrow(ctx, endX, endY, Math.atan2(endVectorNormal.ny, endVectorNormal.nx), isTreeEdge)
+    }
+  }
+
+  function drawLoopEdge(ctx, vertex, positions, isDirected, isTreeEdge = false) {
+    const center = positions[vertex]
+    const angle = Math.PI / 4
+
+    ctx.beginPath()
+    ctx.arc(
+      center.x + (LOOP_EDGE_RADIUS + VERTEX_RADIUS / 2) * Math.cos(angle),
+      center.y - (LOOP_EDGE_RADIUS + VERTEX_RADIUS / 2) * Math.sin(angle),
+      LOOP_EDGE_RADIUS,
+      0,
+      Math.PI * 2
+    )
+    ctx.strokeStyle = isTreeEdge ? TREE_EDGE_COLOR : EDGE_COLOR
+    ctx.lineWidth = isTreeEdge ? 3 : 1
+    ctx.stroke()
+    ctx.lineWidth = 1
+
+    if (isDirected) {
+      const arrowX = center.x + VERTEX_RADIUS * Math.cos(angle + Math.PI / 4)
+      const arrowY = center.y - VERTEX_RADIUS * Math.sin(angle + Math.PI / 4)
+      drawArrow(ctx, arrowX, arrowY, angle + Math.PI / 4, isTreeEdge)
+    }
+  }
+
+  function drawArrow(ctx, x, y, angle, isTreeEdge = false) {
+    const arrowSize = 10
+
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(
+      x - arrowSize * Math.cos(angle - Math.PI / 6),
+      y - arrowSize * Math.sin(angle - Math.PI / 6)
+    )
+    ctx.lineTo(
+      x - arrowSize * Math.cos(angle + Math.PI / 6),
+      y - arrowSize * Math.sin(angle + Math.PI / 6)
+    )
+    ctx.closePath()
+    ctx.fillStyle = isTreeEdge ? TREE_EDGE_COLOR : ARROW_COLOR
+    ctx.fill()
+  }
+
+  function normalize(dx, dy) {
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    return {
+      nx: dx / distance,
+      ny: dy / distance
+    }
+  }
+
+  function shouldBendEdge(from, to, positions, checkIndex) {
+    if (from === to || checkIndex === from || checkIndex === to) return false
+
+    const start = positions[from]
+    const end = positions[to]
+    const check = positions[checkIndex]
+
+    const distance = distanceFromPointToLine(check, start, end)
+
+    return distance < VERTEX_RADIUS
+  }
+
+  function distanceFromPointToLine(point, lineStart, lineEnd) {
+    if (
+      Math.min(lineStart.x, lineEnd.x) > point.x ||
+      Math.max(lineStart.x, lineEnd.x) < point.x ||
+      Math.min(lineStart.y, lineEnd.y) > point.y ||
+      Math.max(lineStart.y, lineEnd.y) < point.y
+    ) return Infinity
+
+    const x = point.x
+    const y = point.y
+    const x1 = lineStart.x
+    const y1 = lineStart.y
+    const x2 = lineEnd.x
+    const y2 = lineEnd.y
+    const dx = x2 - x1
+    const dy = y2 - y1
+
+    if ((dx === 0 && x === x1) || (dy === 0 && y === y1)) return 0
+
+    return Math.abs(dy * (x - x1) - dx * (y - y1)) / Math.sqrt(dx * dx + dy * dy)
+  }
+
+  function drawGraph(ctx, matrix, positions, isDirected, visitedVertices = [], currentVertex = -1, treeEdges = []) {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+
+    for (let i = 0; i < matrix.length; i++) {
+      for (let j = 0; j < matrix.length; j++) {
+        if (matrix[i][j] === 1) {
+          const isTreeEdge = treeEdges.some(edge => edge[0] === i && edge[1] === j)
+          drawEdge(ctx, i, j, positions, isDirected, isTreeEdge, isDirected && matrix[j][i] === 1 && j > i)
+        }
+      }
+    }
+
+
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i]
+      const isVisited = visitedVertices.includes(i)
+      const isCurrent = i === currentVertex
+      drawVertex(ctx, pos.x, pos.y, i, isCurrent, isVisited)
+    }
+  }
+
+  function drawTraversalTree(parents) {
+    treeCtx.clearRect(0, 0, treeCanvas.width, treeCanvas.height)
+
+    const levels = []
+    const positions = []
+    const nodeWidth = 50
+    const nodeHeight = 80
+    const roots = parents.map((p, i) => p === -1 ? i : -1).filter(i => i !== -1)
+    let maxLevel = 0
+    const nodeLevels = new Array(parents.length).fill(-1)
+
+    function calculateLevel(node) {
+      if (nodeLevels[node] !== -1) return nodeLevels[node]
+      if (parents[node] === -1) {
+        nodeLevels[node] = 0
+        return 0
+      }
+      const level = calculateLevel(parents[node]) + 1
+      nodeLevels[node] = level
+      if (level > maxLevel) maxLevel = level
+      return level
+    }
+
+
+    for (let i = 0; i < parents.length; i++) {
+      calculateLevel(i)
+    }
+
+    for (let i = 0; i <= maxLevel; i++) {
+      levels[i] = parents.map((p, idx) => nodeLevels[idx] === i ? idx : -1).filter(x => x !== -1)
+    }
+
+    const startY = 50
+    const levelHeight = 120
+
+
+    for (let level = 0; level < levels.length; level++) {
+      const nodesInLevel = levels[level].length
+      const startX = (treeCanvas.width - (nodesInLevel - 1) * nodeWidth) / 2
+
+      for (let i = 0; i < nodesInLevel; i++) {
+        const node = levels[level][i]
+        positions[node] = {
+          x: startX + i * nodeWidth,
+          y: startY + level * levelHeight
+        }
+      }
+    }
+
+    treeCanvas.height = maxLevel * levelHeight + 2 * startY
+
+    for (let i = 0; i < parents.length; i++) {
+      if (parents[i] !== -1) {
+        const parent = parents[i]
+        if (positions[parent] && positions[i]) {
+          treeCtx.beginPath()
+          treeCtx.moveTo(positions[parent].x, positions[parent].y + VERTEX_RADIUS)
+          treeCtx.lineTo(positions[i].x, positions[i].y - VERTEX_RADIUS)
+          treeCtx.strokeStyle = TREE_EDGE_COLOR
+          treeCtx.lineWidth = 2
+          treeCtx.stroke()
+          treeCtx.lineWidth = 1
+        }
+      }
+    }
+
+    for (let i = 0; i < positions.length; i++) {
+      if (positions[i]) {
+        drawVertex(treeCtx, positions[i].x, positions[i].y, i, false, true)
+      }
+    }
+  }
+
+  function createMatrixTable(matrix) {
+    const table = document.getElementById("table")
+    table.innerHTML = ""
+
+    const thead = document.createElement("thead")
+    const headerRow = document.createElement("tr")
+
+    const emptyHeader = document.createElement("th")
+    headerRow.appendChild(emptyHeader)
+
+    for (let i = 0; i < matrix.length; i++) {
+      const th = document.createElement("th")
+      th.textContent = i.toString()
+      headerRow.appendChild(th)
+    }
+
+    thead.appendChild(headerRow)
+    table.appendChild(thead)
+
+    const tbody = document.createElement("tbody")
+
+    for (let i = 0; i < matrix.length; i++) {
+      const row = document.createElement("tr")
+
+      const rowHeader = document.createElement("th")
+      rowHeader.textContent = i.toString()
+      row.appendChild(rowHeader)
+
+      for (let j = 0; j < matrix.length; j++) {
+        const cell = document.createElement("td")
+        if (i === j) cell.classList.add("diagonal")
+        cell.textContent = matrix[i][j]
+        cell.dataset.row = i.toString()
+        cell.dataset.col = j.toString()
+
+        row.appendChild(cell)
+      }
+
+      tbody.appendChild(row)
+    }
+
+    table.appendChild(tbody)
+  }
+
+  function updateSeed(seed) {
+    rng = new SeededRandom(seed)
+    const heading = document.getElementById("seed")
+    heading.innerHTML = `Seed: ${rng.seed}`
+  }
+
+  function resetTraversal() {
+    traversal = null
+    traversalType = null
+    traversalHistory = []
+    treeEdges = []
+    nextStepBtn.disabled = true
+    drawGraph(directedCtx, adjacencyMatrix, vertexPositions, true)
+    treeCtx.clearRect(0, 0, treeCanvas.width, treeCanvas.height)
+  }
+
+  function initAndDrawGraph(seed) {
+    resetTraversal()
+    updateSeed(seed)
+    adjacencyMatrix = generateAdjacencyMatrix()
+    vertexPositions = calculateVertexPositions(directedCanvas)
+    createMatrixTable(adjacencyMatrix)
+    drawGraph(directedCtx, adjacencyMatrix, vertexPositions, true)
+  }
+
+  function performNextStep() {
+    if (!traversal || traversal.done()) {
+      nextStepBtn.disabled = true
+      return
+    }
+
+    traversal.next()
+    const result = traversal.result()
+    const lastVertex = result[result.length - 1]
+
+    const visitedVertices = result.filter(v => v !== -1)
+    const currentVertex = lastVertex !== -1 ? lastVertex : -1
+
+    drawGraph(
+      directedCtx,
+      adjacencyMatrix,
+      vertexPositions,
+      true,
+      visitedVertices,
+      currentVertex,
+      treeEdges
+    )
+
+    if (traversalType === "bfs" || traversalType === "dfs") {
+      drawTraversalTree(traversal.getParents())
+    }
+
+    if (traversal.done()) {
+      nextStepBtn.disabled = true
+    }
+  }
+
+  window.onload = () => initAndDrawGraph(parseInt(inputSeed.value))
+
+  generateBtn.addEventListener("click", () => {
+    initAndDrawGraph(parseInt(inputSeed.value))
+  })
+
+  bfsBtn.addEventListener("click", () => {
+    resetTraversal()
+    traversal = createBFS(adjacencyMatrix)
+    traversalType = "bfs"
+    nextStepBtn.disabled = false
+  })
+
+  dfsBtn.addEventListener("click", () => {
+    resetTraversal()
+    traversal = createDFS(adjacencyMatrix)
+    traversalType = "dfs"
+    nextStepBtn.disabled = false
+  })
+
+  nextStepBtn.addEventListener("click", performNextStep)
+
+  resetBtn.addEventListener("click", () => {
+    initAndDrawGraph(parseInt(inputSeed.value))
+  })
+
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space" && !nextStepBtn.disabled) {
+      performNextStep()
+    }
+  })
+</script>
+</body>
+</html>
